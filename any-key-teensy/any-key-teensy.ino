@@ -26,9 +26,9 @@ const uint8_t switch_pin(2);
 const uint8_t led_data_pin(7);
 const uint8_t led_clock_pin(14);
 
-// LED(s)
-const size_t num_leds(1);
-const CRGB led_default_color(CRGB::White);
+// Key
+const uint16_t key(KEY_MEDIA_PLAY_PAUSE);
+const CRGB key_down_color(CRGB::Yellow);
 
 // Gamma correction table
 // Taken from https://learn.adafruit.com/led-tricks-gamma-correction/the-quick-fix
@@ -59,7 +59,7 @@ const uint8_t PROGMEM gamma8[] = {
 // Globals
 // -----------------------------------------------------------------------------
 Bounce button = Bounce();
-CRGB leds[num_leds];
+CRGB led_color;
 
 // -----------------------------------------------------------------------------
 // Function Definitions
@@ -77,13 +77,8 @@ void setup()
   button.interval(5); // interval in ms
 
   // Configure LED(s)
-  FastLED.addLeds<APA102, led_data_pin, led_clock_pin, BGR>(leds, num_leds);
-  for (size_t i(0); i < num_leds; ++i)
-  {
-    leds[i] = led_default_color;
-  }
+  FastLED.addLeds<APA102, led_data_pin, led_clock_pin, BGR>(&led_color, 1);
   digitalWrite(led_pin, LOW);
-  FastLED.show();
 }
 
 bool down = false;
@@ -95,15 +90,15 @@ void loop()
     // Button was pressed down
     if (button.fell())
     {
-      Keyboard.press(KEY_CAPS_LOCK);
+      Keyboard.press(key);
       down = true;
-      leds[0] = CRGB::Blue;
+      led_color = key_down_color;
     }
 
     // Button was released
     else if (button.rose())
     {
-      Keyboard.release(KEY_CAPS_LOCK);
+      Keyboard.release(key);
       down = false;
     }
   }
@@ -112,9 +107,9 @@ void loop()
   {
       int val = millis();
       val /= 10;
-      leds[0].r = gamma8[sin8(val/2)];
-      leds[0].g = gamma8[triwave8(val/5)];
-      leds[0].b = gamma8[cos8(val/3)];
+      led_color.r = gamma8[sin8(val/2)];
+      led_color.g = gamma8[triwave8(val/5)];
+      led_color.b = gamma8[cos8(val/3)];
   }
 
   FastLED.show();
