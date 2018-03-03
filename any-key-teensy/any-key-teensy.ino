@@ -52,7 +52,7 @@ void setup()
   debouncer.attach(switch_pin);
   debouncer.interval(5); // interval in ms
 
-  FastLED.addLeds<APA102, data_pin, clk_pin>(leds, num_leds);
+  FastLED.addLeds<APA102, data_pin, clk_pin, BGR>(leds, num_leds);
 }
 
 // Main program loop
@@ -62,11 +62,11 @@ void loop()
   int value = debouncer.read();
   if ( value == LOW ) {
     digitalWrite(led_pin, HIGH );
-    leds[0] = CRGB::Red;
+    leds[0] = CRGB::Blue;
   } 
   else {
     digitalWrite(led_pin, LOW );
-    leds[0] = CRGB::Blue;
+    leds[0] = CRGB::Red;
   }
 
   FastLED.show();
