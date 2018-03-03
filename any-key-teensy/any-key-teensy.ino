@@ -16,6 +16,7 @@
 #include <Bounce2.h>
 #include <FastLED.h>
 
+
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
@@ -29,6 +30,9 @@ const uint8_t led_clock_pin(14);
 // Key
 const uint16_t key(KEY_MEDIA_PLAY_PAUSE);
 const CRGB key_down_color(CRGB::Yellow);
+
+// Color rotation rate
+const uint32_t led_color_rate(20); // milliseconds between color steps
 
 // Gamma correction table
 // Taken from https://learn.adafruit.com/led-tricks-gamma-correction/the-quick-fix
@@ -50,6 +54,7 @@ const uint8_t PROGMEM gamma8[] = {
   177,180,182,184,186,189,191,193,196,198,200,203,205,208,210,213,
   215,218,220,223,225,228,231,233,236,239,241,244,247,249,252,255 };
 
+
 // -----------------------------------------------------------------------------
 // Declarations
 // -----------------------------------------------------------------------------
@@ -58,8 +63,16 @@ const uint8_t PROGMEM gamma8[] = {
 // -----------------------------------------------------------------------------
 // Globals
 // -----------------------------------------------------------------------------
+
+// Button state
 Bounce button = Bounce();
+bool button_down(false);
+
+// LED state
 CRGB led_color;
+elapsedMillis led_timer;
+int led_val(-1);
+
 
 // -----------------------------------------------------------------------------
 // Function Definitions
@@ -81,36 +94,40 @@ void setup()
   digitalWrite(led_pin, LOW);
 }
 
-bool down = false;
 // Main program loop
 void loop()
 {
+  // Check for button activity
   if (button.update())
   {
     // Button was pressed down
     if (button.fell())
     {
       Keyboard.press(key);
-      down = true;
+      button_down = true;
       led_color = key_down_color;
+      FastLED.show();
     }
 
     // Button was released
     else if (button.rose())
     {
       Keyboard.release(key);
-      down = false;
+      button_down = false;
+      led_timer = led_color_rate; // Force a color update
     }
   }
 
-  if (!down)
+  // Rotate LED color when idle
+  if (!button_down && (led_timer >= led_color_rate))
   {
-      int val = millis();
-      val /= 10;
-      led_color.r = gamma8[sin8(val/2)];
-      led_color.g = gamma8[triwave8(val/5)];
-      led_color.b = gamma8[cos8(val/3)];
-  }
+    led_timer -= led_color_rate;
+    led_val++;
 
-  FastLED.show();
+    // Calculate new color
+    led_color.r = gamma8[sin8(led_val/2)];
+    led_color.g = gamma8[triwave8(led_val/5)];
+    led_color.b = gamma8[cos8(led_val/3)];
+    FastLED.show();
+  }
 }
