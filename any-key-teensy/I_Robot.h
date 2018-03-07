@@ -2,7 +2,7 @@
 // I, Robot by Isaac Asimov
 //
 // Original Source:
-// https://www.ttu.ee/public/m/mart-murdvee/Techno.../Isaac_Asimov_-_I_Robot.pdf
+// https://www.ttu.ee/public/m/mart-murdvee/Techno-Psy/Isaac_Asimov_-_I_Robot.pdf
 //
 // Converted to .txt by copy-paste, then manually cleaned and formatted into
 // I_Robot.txt
