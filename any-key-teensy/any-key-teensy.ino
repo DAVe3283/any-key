@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 #define VERSION_MAJOR 0
-#define VERSION_MINOR 2
-#define VERSION_REVISION 1
+#define VERSION_MINOR 3
+#define VERSION_REVISION 0
 
 // -----------------------------------------------------------------------------
 // Includes
@@ -21,6 +21,7 @@
 #include <float.h> // for FLT_MAX
 #include "MAC_Address.h"
 #include "flashbits.h"
+#include "fast_type.h"
 #include "I_Robot.h"
 
 
@@ -63,7 +64,7 @@ const uint32_t led_color_rate(20); // milliseconds between color steps
 const uint32_t temperature_delay(1000);
 
 // Debug delays (milliseconds)
-const uint32_t debug_delay(15 * 1000);
+const uint32_t debug_delay(10 * 1000);
 const uint32_t e_egg_delay(30 * 1000);
 
 // Gamma correction table
@@ -99,9 +100,6 @@ uint64_t get_uptime();
 
 // Print (really type out) diagnostic information
 void print_diagnostics();
-
-// Print an Alt code (e.g. Alt+0176)
-void print_alt_code(const uint8_t* code, const size_t& size);
 
 // Print LZSS compressed string
 void print_lzss(const prog_uchar* compressed);
@@ -314,9 +312,9 @@ void print_diagnostics()
 
   // Temperature
   Keyboard.printf("- Temperature: %.1f", temperature);
-  print_alt_code(degree, sizeof(degree)/sizeof(*degree));
+  FT.TypeAltCode(degree, sizeof(degree)/sizeof(*degree));
   Keyboard.printf("C (maximum since startup: %.1f", temperature_max);
-  print_alt_code(degree, sizeof(degree)/sizeof(*degree));
+  FT.TypeAltCode(degree, sizeof(degree)/sizeof(*degree));
   Keyboard.println("C)");
 
   // Uptime
@@ -338,75 +336,6 @@ void print_diagnostics()
     Keyboard.printf((y ? "%03u:" : "%u:"), d);
   }
   Keyboard.printf("%02u:%02u:%02u.%03u)\n\n", h, m, s, ms);
-}
-
-void print_alt_code(const uint8_t* code, const size_t& size)
-{
-  // Hold down ALT
-  Keyboard.set_modifier(MODIFIERKEY_ALT);
-  Keyboard.send_now();
-
-  // Type code
-  for (size_t i(0); i < size; ++i)
-  {
-    // Get keycode
-    auto key(KEYPAD_0);
-    switch (code[i])
-    {
-      case 1:
-        key = KEYPAD_1;
-        break;
-
-      case 2:
-        key = KEYPAD_2;
-        break;
-
-      case 3:
-        key = KEYPAD_3;
-        break;
-
-      case 4:
-        key = KEYPAD_4;
-        break;
-
-      case 5:
-        key = KEYPAD_5;
-        break;
-
-      case 6:
-        key = KEYPAD_6;
-        break;
-
-      case 7:
-        key = KEYPAD_7;
-        break;
-
-      case 8:
-        key = KEYPAD_8;
-        break;
-
-      case 9:
-        key = KEYPAD_9;
-        break;
-
-      case 0:
-      default:
-        key = KEYPAD_0;
-        break;
-    }
-
-    // Press key
-    Keyboard.set_key1(key);
-    Keyboard.send_now();
-
-    // Release key
-    Keyboard.set_key1(0);
-    Keyboard.send_now();
-  }
-
-  // Release modifiers
-  Keyboard.set_modifier(0);
-  Keyboard.send_now();
 }
 
 void print_lzss(const prog_uchar* compressed, char *const buffer, const size_t& buffer_size)
@@ -456,10 +385,9 @@ void print_lzss(const prog_uchar* compressed, char *const buffer, const size_t& 
       const size_t length(BS.getn<size_t>(length_bits) + min_length);
       const char *const backreference(buffer + buffer_used - offset);
       memcpy(backreference_buffer, backreference, length);
-      backreference_buffer[length] = 0; // Null-terminate
 
       // Print the back-reference
-      Keyboard.print(backreference_buffer);
+      FT.Type(backreference_buffer, length);
 
       // Update the buffer
       buffer_update(buffer, buffer_size, buffer_used, backreference_buffer, length);
@@ -475,7 +403,7 @@ void print_lzss(const prog_uchar* compressed, char *const buffer, const size_t& 
       }
 
       const char c(BS.getn<char>(7)); // Get the literal character from the stream
-      Keyboard.print(c); // Print the character
+      FT.Type(c);
       buffer_update(buffer, buffer_size, buffer_used, &c, 1); // Update buffer
     }
 
@@ -483,15 +411,18 @@ void print_lzss(const prog_uchar* compressed, char *const buffer, const size_t& 
     if (button.update() && button.fell())
     {
       Keyboard.println();
-      Keyboard.println("Aborted!");
+      Keyboard.println();
+      Keyboard.println("---- Aborted! ----");
       Keyboard.println();
       button_down = true;
       button_down_timer = 0;
       led_color = debug_color;
       FastLED.show();
+      FT.EndSession();
       return;
     }
   }
+  FT.EndSession();
 }
 
 void buffer_update(char *const buffer, const size_t& buffer_size, size_t& buffer_used, const char *const new_data, const size_t& new_size)
