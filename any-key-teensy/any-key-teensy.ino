@@ -11,7 +11,7 @@
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 2
-#define VERSION_REVISION 0
+#define VERSION_REVISION 1
 
 // -----------------------------------------------------------------------------
 // Includes
@@ -200,7 +200,6 @@ void loop()
     {
       Keyboard.release(key);
       button_down = false;
-      led_timer = led_color_rate; // Force a color update
 
       // Debug
       if (debug)
@@ -221,6 +220,9 @@ void loop()
           print_lzss(i_robot, e_egg_buffer, sizeof(e_egg_buffer)/sizeof(*e_egg_buffer));
         }
       }
+
+      // Force an immediate color update & prevent wind-up from debug printing
+      led_timer = led_color_rate;
     }
   }
 
@@ -437,12 +439,18 @@ void print_lzss(const prog_uchar* compressed, char *const buffer, const size_t& 
 
   // Decompress chunks
   size_t buffer_used(0);
-  // const prog_uchar* const end = dst + BS.getn(32);
   for (size_t chunk(0); chunk < num_chunks; ++chunk)
   {
     // Back-reference chunk
     if (BS.get1())
     {
+      // Indicate what kind of chunk we are dealing with
+      if (led_color != static_cast<CRGB>(CRGB::Blue))
+      {
+        led_color = CRGB::Blue;
+        FastLED.show();
+      }
+
       // Get the back-reference
       const size_t offset(BS.getn<size_t>(offset_bits) + 1);
       const size_t length(BS.getn<size_t>(length_bits) + min_length);
@@ -460,9 +468,28 @@ void print_lzss(const prog_uchar* compressed, char *const buffer, const size_t& 
     // Literal chunk
     else
     {
+      if (led_color != static_cast<CRGB>(CRGB::Red))
+      {
+        led_color = CRGB::Red;
+        FastLED.show();
+      }
+
       const char c(BS.getn<char>(7)); // Get the literal character from the stream
       Keyboard.print(c); // Print the character
       buffer_update(buffer, buffer_size, buffer_used, &c, 1); // Update buffer
+    }
+
+    // Allow button press to abort
+    if (button.update() && button.fell())
+    {
+      Keyboard.println();
+      Keyboard.println("Aborted!");
+      Keyboard.println();
+      button_down = true;
+      button_down_timer = 0;
+      led_color = debug_color;
+      FastLED.show();
+      return;
     }
   }
 }
