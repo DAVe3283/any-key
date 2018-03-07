@@ -3,12 +3,15 @@
 //
 // The firmware for a Teensy 3.2 (or similar) to run the key.
 //
-// Teensy should be configured to USB Keyboard mode.
+// Compile Options:
+// - USB Type: Keyboard
+// - CPU Speed: 24 MHz (or faster)
+// - Optimize: Faster with LTO (other probably work too)
 // -----------------------------------------------------------------------------
 
 #define VERSION_MAJOR 0
-#define VERSION_MINOR 1
-#define VERSION_REVISION 1
+#define VERSION_MINOR 2
+#define VERSION_REVISION 0
 
 // -----------------------------------------------------------------------------
 // Includes
@@ -17,6 +20,8 @@
 #include <FastLED.h>
 #include <float.h> // for FLT_MAX
 #include "MAC_Address.h"
+#include "flashbits.h"
+#include "I_Robot.h"
 
 
 // -----------------------------------------------------------------------------
@@ -98,6 +103,13 @@ void print_diagnostics();
 // Print an Alt code (e.g. Alt+0176)
 void print_alt_code(const uint8_t* code, const size_t& size);
 
+// Print LZSS compressed string
+void print_lzss(const prog_uchar* compressed);
+
+// Update a rotating buffer with new data
+void buffer_update(char *const buffer, const size_t& buffer_size, size_t& buffer_used, const char *const new_data, const size_t& new_size);
+
+
 // -----------------------------------------------------------------------------
 // Globals
 // -----------------------------------------------------------------------------
@@ -125,8 +137,10 @@ uint32_t uptime_last(0);      // Last seen uptime value (to catch overflow).
 uint32_t uptime_overflows(0); // millis() 32-bit overflows (every 49.7 days).
 // 64-bits worth of uptime gives us 584,554,531 years. Should be enough. :P
 
-// Debug mode
+// Debug mode / Easter Egg
 bool debug(false);
+char e_egg_buffer[i_robot_required_buffer_size] = { 0 };
+
 
 // -----------------------------------------------------------------------------
 // Function Definitions
@@ -155,8 +169,8 @@ void setup()
   measure_temperature();
 
   // Check for debug mode
-  int button_state(button.read());
-  if (button_state == LOW)
+  // No need to debounce in this case, button has been held down a "long" time
+  if (digitalRead(switch_pin) == LOW)
   {
     debug = true;
     button_down = true;
@@ -191,6 +205,9 @@ void loop()
       // Debug
       if (debug)
       {
+        led_color = debug_color;
+        FastLED.show();
+
         // Print debug info
         if (button_down_timer >= debug_delay)
         {
@@ -200,7 +217,8 @@ void loop()
         // Print easter egg text (yes, also)
         if (button_down_timer >= e_egg_delay)
         {
-          // Fun stuff coming
+          // Decompress and print I, Robot by Isaac Asimov
+          print_lzss(i_robot, e_egg_buffer, sizeof(e_egg_buffer)/sizeof(*e_egg_buffer));
         }
       }
     }
@@ -278,8 +296,10 @@ void print_diagnostics()
   const uint8_t degree[] = { 0, 1, 7, 6, };
 
   // Header
-  Keyboard.printf("any-key v%d.%d.%d\n", VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
+  Keyboard.printf("any-key-teensy v%d.%d.%d\n", VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
   Keyboard.println("https://github.com/DAVe3283/any-key");
+  Keyboard.println();
+  Keyboard.printf("Compiled %s %s\n", __DATE__, __TIME__);
   Keyboard.println();
   Keyboard.println("Teensy 3.x Hardware Information:");
 
@@ -315,7 +335,7 @@ void print_diagnostics()
   {
     Keyboard.printf((y ? "%03u:" : "%u:"), d);
   }
-  Keyboard.printf("%02u:%02u:%02u.%03u)\n", h, m, s, ms);
+  Keyboard.printf("%02u:%02u:%02u.%03u)\n\n", h, m, s, ms);
 }
 
 void print_alt_code(const uint8_t* code, const size_t& size)
@@ -385,4 +405,84 @@ void print_alt_code(const uint8_t* code, const size_t& size)
   // Release modifiers
   Keyboard.set_modifier(0);
   Keyboard.send_now();
+}
+
+void print_lzss(const prog_uchar* compressed, char *const buffer, const size_t& buffer_size)
+{
+  // This is loosely based on http://excamera.com/sphinx/article-compression.html
+  // which is a particularly meh LZSS scheme with an improbably slow compressor.
+  // One notable change is I assumed all data is ASCII text, and I store 7 bit
+  // literals, so high ASCII will get corrupted. But since I control the source
+  // content, this isn't a problem.
+  // Since this only operates on one hard-coded dataset, I do almost no error
+  // checking, bounds checking, etc.
+  // If you feed this arbitrary data, bad things WILL happen.
+
+  // Read header
+  BS.begin(compressed);
+  const size_t offset_bits(BS.getn<size_t>( 4)); // Number of bits for offset field
+  const size_t length_bits(BS.getn<size_t>( 4)); // Number of bits for length field
+  const size_t min_length( BS.getn<size_t>( 2)); // Minimum length of a back-reference
+  const size_t num_chunks( BS.getn<size_t>(32)); // Number of chunks in the stream
+
+  // Verify we have a big enough buffer
+  const size_t required_buffer_size(static_cast<size_t>(1) << offset_bits);
+  if (buffer_size < required_buffer_size)
+  {
+    Keyboard.println("Insufficient buffer size to decompress LZSS string!");
+    Keyboard.printf("Buffer is %lu bytes, but archive requires %lu bytes.\n", buffer_size, required_buffer_size);
+    return;
+  }
+  char backreference_buffer[(1 << length_bits) + min_length + 1]; // Add 1 for terminating null
+
+  // Decompress chunks
+  size_t buffer_used(0);
+  // const prog_uchar* const end = dst + BS.getn(32);
+  for (size_t chunk(0); chunk < num_chunks; ++chunk)
+  {
+    // Back-reference chunk
+    if (BS.get1())
+    {
+      // Get the back-reference
+      const size_t offset(BS.getn<size_t>(offset_bits) + 1);
+      const size_t length(BS.getn<size_t>(length_bits) + min_length);
+      const char *const backreference(buffer + buffer_used - offset);
+      memcpy(backreference_buffer, backreference, length);
+      backreference_buffer[length] = 0; // Null-terminate
+
+      // Print the back-reference
+      Keyboard.print(backreference_buffer);
+
+      // Update the buffer
+      buffer_update(buffer, buffer_size, buffer_used, backreference_buffer, length);
+    }
+
+    // Literal chunk
+    else
+    {
+      const char c(BS.getn<char>(7)); // Get the literal character from the stream
+      Keyboard.print(c); // Print the character
+      buffer_update(buffer, buffer_size, buffer_used, &c, 1); // Update buffer
+    }
+  }
+}
+
+void buffer_update(char *const buffer, const size_t& buffer_size, size_t& buffer_used, const char *const new_data, const size_t& new_size)
+{
+  // This function does no error checking. You ask for stupid things, you get them.
+  // Assumptions this function makes:
+  // - new_size <= buffer_size
+  // - buffer and new_data don't overlap
+  // - probably more, I am too lazy to think of other possible side-effects
+
+  // Rotate buffer by enough to fit the new content
+  if (new_size > (buffer_size - buffer_used))
+  {
+    memmove(buffer, buffer + new_size, buffer_size - new_size);
+    buffer_used -= new_size;
+  }
+
+  // Add new content
+  memcpy(buffer + buffer_used, new_data, new_size);
+  buffer_used += new_size;
 }
