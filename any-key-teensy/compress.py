@@ -1,3 +1,13 @@
+################################################################################
+## Simple (and glacially slow) LZSS compressor
+## From: http://excamera.com/sphinx/article-compression.html
+##
+## Minor tweaks to suit the specific application:
+## - Increased segment count from 16 to 32 bits
+## - Only encode the lower 7 bits of each byte (assume pure ASCII)
+## - Format output nicely
+################################################################################
+
 import time
 import sys
 import array
@@ -69,7 +79,7 @@ class Codec(object):
         bs.append(4, self.b_len)
         bs.append(2, self.M)
         sched = self.compress(blk)
-        bs.append(16, len(sched))
+        bs.append(32, len(sched))
         for c in sched:
             if len(c) != 1:
                 (offset, l) = c
@@ -78,19 +88,21 @@ class Codec(object):
                 bs.append(self.b_len, l - self.M)
             else:
                 bs.append(1, 0)
-                bs.append(8, ord(c))
+                bs.append(7, ord(c))
         return bs.toarray()
 
 
     def to_cfile(self, hh, blk, name):
-        print >>hh, "static PROGMEM prog_uchar %s[] = {" % name
         bb = self.toarray(blk)
+        print >>hh, "const PROGMEM prog_uchar %s[%d] = {" % (name, len(bb))
         for i in range(0, len(bb), 16):
             if (i & 0xff) == 0:
                 print >>hh
+                print >>hh, "\t// 0     1     2     3     4     5     6     7     8     9     A     B     C     D     E     F"
+            print >>hh, "\t",
             for c in bb[i:i+16]:
-                print >>hh, "0x%02x, " % c,
-            print >>hh
+                print >>hh, "0x%02X," % c,
+            print >>hh, "// 0x%05X" % i
         print >>hh, "};"
 
     def decompress(self, sched):
