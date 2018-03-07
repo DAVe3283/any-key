@@ -3,6 +3,7 @@
 ## From: http://excamera.com/sphinx/article-compression.html
 ##
 ## Minor tweaks to suit the specific application:
+## - Fixed bug in prefix() causing incorrect output
 ## - Increased segment count from 16 to 32 bits
 ## - Only encode the lower 7 bits of each byte (assume pure ASCII)
 ## - Format output nicely
@@ -14,9 +15,9 @@ import array
 
 def prefix(s1, s2):
     """ Return the length of the common prefix of s1 and s2 """
-    sz = len(s2)
+    sz = min(len(s1), len(s2))
     for i in range(sz):
-        if s1[i % len(s1)] != s2[i]:
+        if s1[i] != s2[i]:
             return i
     return sz
 
