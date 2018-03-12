@@ -11,7 +11,7 @@
 
 #define VERSION_MAJOR 0
 #define VERSION_MINOR 3
-#define VERSION_REVISION 0
+#define VERSION_REVISION 1
 
 // -----------------------------------------------------------------------------
 // Includes
@@ -128,6 +128,7 @@ MAC_Address mac_address;
 // Temperature & maximum temperature measured
 elapsedMillis temperature_timer;
 float temperature(-FLT_MAX);
+float temperature_min(FLT_MAX);
 float temperature_max(-FLT_MAX);
 
 // Uptime! Because why not?
@@ -262,6 +263,12 @@ void measure_temperature()
   const float analogValue(analogRead(analog_temperature_pin));
   temperature = (analogValue - intercept) / gradient;
 
+  // Update minimum temperature
+  if (temperature < temperature_min)
+  {
+    temperature_min = temperature;
+  }
+
   // Update maximum temperature
   if (temperature > temperature_max)
   {
@@ -313,9 +320,11 @@ void print_diagnostics()
   // Temperature
   Keyboard.printf("- Temperature: %.1f", temperature);
   FT.TypeAltCode(degree, sizeof(degree)/sizeof(*degree));
-  Keyboard.printf("C (maximum since startup: %.1f", temperature_max);
+  Keyboard.printf("C (%.1f", temperature_min);
   FT.TypeAltCode(degree, sizeof(degree)/sizeof(*degree));
-  Keyboard.println("C)");
+  Keyboard.printf("C to %.1f", temperature_max);
+  FT.TypeAltCode(degree, sizeof(degree)/sizeof(*degree));
+  Keyboard.println("C seen since startup)");
 
   // Uptime
   const uint64_t uptime(get_uptime());
